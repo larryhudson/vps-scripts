@@ -37,22 +37,29 @@ while ! is_port_available "$PORT"; do
   PORT=$((PORT + 1))
 done
 
-# Step 1: Create a new user for the app
+# Step 1: Set up the deploy user
 echo ""
-echo "Step 1: Create a new user for the app"
-echo "-------------------------------------"
+echo "Step 1: Set up the deploy user"
+echo "-------------------------------"
 
-if prompt_user "Create a new user '$REPO' for the app?"; then
-  sudo adduser --disabled-password --gecos "" $REPO
+DEPLOY_USER="deploy"
+
+# Skip if the deploy user already exists
+if id "$DEPLOY_USER" >/dev/null 2>&1; then
+  echo "Deploy user '$DEPLOY_USER' already exists. Skipping user creation..."
+else
+  echo "Creating deploy user..."
+  sudo adduser --disabled-password --gecos "" "$DEPLOY_USER"
 fi
 
-# Step 2: Clone the Git repo as the root user
+
+# Step 2: Clone the Git repo as the deploy user
 echo ""
 echo "Step 2: Clone the Git repo"
 echo "--------------------------"
 
-if prompt_user "Clone the Git repo '$REPO_NAME' as the root user?"; then
-  sudo -u $REPO -H git clone https://github.com/$REPO_NAME /home/$REPO/$REPO
+if prompt_user "Clone the Git repo '$REPO_NAME' as the deploy user?"; then
+  sudo -u $DEPLOY_USER -H git clone https://github.com/$REPO_NAME /home/$REPO/$REPO
 fi
 
 # Step 3: Build the app
@@ -61,7 +68,7 @@ echo "Step 3: Build the app"
 echo "----------------------"
 
 if prompt_user "Build the app?"; then
-  sudo -u $REPO -H bash -c "cd /home/$REPO/$REPO && npm install && npm run build"
+  sudo -u $DEPLOY_USER -H bash -c "cd /home/$DEPLOY_USER/$REPO && npm install && npm run build"
 fi
 
 # Step 4: Add the app to PM2
@@ -72,7 +79,7 @@ echo "---------------------------"
 if prompt_user "Add the app to PM2?"; then
   # Read the relative path of the Node.js script to run
   read -rp "Enter the relative path of the Node.js script to run (e.g., app.js): " SCRIPT_PATH
-  sudo -u $REPO -H pm2 start /home/$REPO/$REPO/$SCRIPT_PATH --name $REPO --env PORT=$PORT
+  sudo -u $DEPLOY_USER -H pm2 start /home/$DEPLOY_USER/$REPO/$SCRIPT_PATH --name $REPO --env PORT=$PORT
 fi
 
 # Step 5: Configure Nginx
@@ -129,7 +136,7 @@ echo "Step 8: Generate and configure an SSL certificate with Certbot"
 echo "-------------------------------------------------------------"
 
 if prompt_user "Generate and configure an SSL certificate with Certbot?"; then
-  sudo certbot --nginx -d $SUBDOMAIN --deploy-hook "systemctl reload nginx"
+  sudo certbot --nginx -d $SUBDOMAIN
 fi
 
 echo ""

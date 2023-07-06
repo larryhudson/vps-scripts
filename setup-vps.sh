@@ -26,13 +26,6 @@ echo ""
 echo "Step 2: Install System Dependencies"
 echo "------------------------------------"
 
-read -rp "Install Node.js and npm? (Y/n) " install_node
-install_node=${install_node:-Y}
-
-if [[ $install_node =~ ^[Yy]$ ]]; then
-	curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash -
-	sudo apt install -y nodejs
-fi
 
 read -rp "Install Redis? (Y/n) " install_redis
 install_redis=${install_redis:-Y}
@@ -55,17 +48,60 @@ if [[ $install_certbot =~ ^[Yy]$ ]]; then
 	sudo apt install -y certbot python3-certbot-nginx
 fi
 
-read -rp "Install PM2? (Y/n) " install_pm2
+
+# Step 3: Setup deploy user and install Node
+
+echo ""
+echo "Step 3: Setup deploy user and install Node"
+echo "------------------------------------"
+
+
+read -rp "Setup deploy user? (Y/n) " setup_deploy_user
+setup_deploy_user=${setup_deploy_user:-Y}
+
+DEPLOY_USERNAME=deploy
+
+if [[ $setup_deploy_user =~ ^[Yy]$ ]]; then
+    # Create 'deploy' user
+    sudo adduser $DEPLOY_USERNAME --disabled-password --gecos ""
+fi
+
+
+read -rp "Install Node LTS using nvm? (Y/n) " install_node_lts
+install_node_lts=${install_node_lts:-Y}
+
+
+if [[ $install_node_lts =~ ^[Yy]$ ]]; then
+   # Switch to the 'deploy' user and install nvm
+    sudo -u $DEPLOY_USERNAME bash << EOF
+        curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.3/install.sh | bash
+        source ~/.bashrc
+EOF
+
+# Install the latest LTS version of Node.js as 'deploy'
+    sudo -u $DEPLOY_USERNAME bash << EOF
+        nvm install --lts
+        nvm use --lts
+EOF
+fi
+
+read -rp "Install PM2 as deploy user? (Y/n) " install_pm2
 install_pm2=${install_pm2:-Y}
 
 if [[ $install_pm2 =~ ^[Yy]$ ]]; then
-	sudo npm install -g pm2
+
+# Install PM2 as 'deploy'
+    sudo -u deploy bash << EOF
+        npm install -g pm2
+EOF
+    
 fi
 
-# Step 3: Enable Firewall
+
+# Step 4: Enable Firewall
 
 echo ""
-echo "Step 3: Enable Firewall"
+echo "Step 4: Enable Firewall"
 echo "-------------------------"
 
 read -rp "Enable firewall? (Y/n) " enable_firewall
@@ -77,13 +113,13 @@ if [[ $enable_firewall =~ ^[Yy]$ ]]; then
 	sudo ufw enable
 fi
 
-# Step 4: Set Up Git as Root User
+# Step 5: Set Up Git as Root User
 
 echo ""
-echo "Step 4: Set Up Git as Root User"
+echo "Step 5: Set Up Git as Deploy User"
 echo "---------------------------------"
 
-read -rp "Configure Git as root user? (Y/n) " configure_git
+read -rp "Configure Git as deploy user? (Y/n) " configure_git
 configure_git=${configure_git:-Y}
 
 if [[ $configure_git =~ ^[Yy]$ ]]; then
@@ -92,16 +128,16 @@ if [[ $configure_git =~ ^[Yy]$ ]]; then
 	read -rp "Enter your name for Git user config: " git_username
 	read -rp "Enter your email address for Git user config: " git_email
 
-	sudo git config --global user.name "$git_username"
-	sudo git config --global user.email "$git_email"
+	sudo -u $DEPLOY_USER git config --global user.name "$git_username"
+	sudo -u $DEPLOY_USER git config --global user.email "$git_email"
 
 	echo "Generating SSH key..."
-	ssh-keygen -t rsa -b 4096 -C "$git_email"
+	sudo -u $DEPLOY_USER ssh-keygen -t rsa -b 4096 -C "$git_email"
 
 	echo ""
 	echo "Copy and paste the following public key into your Git platform:"
 	echo "-----------------------------"
-	cat ~/.ssh/id_rsa.pub
+	cat /home/$DEPLOY_USER/.ssh/id_rsa.pub
 	echo "-----------------------------"
 fi
 
