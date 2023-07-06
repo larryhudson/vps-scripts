@@ -59,7 +59,7 @@ echo "Step 2: Clone the Git repo"
 echo "--------------------------"
 
 if prompt_user "Clone the Git repo '$REPO_NAME' as the deploy user?"; then
-  sudo -u $DEPLOY_USER -H git clone https://github.com/$REPO_NAME /home/$REPO/$REPO
+  sudo -u $DEPLOY_USER -H git clone https://github.com/$REPO_NAME /home/$DEPLOY_USER/$REPO
 fi
 
 # Step 3: Build the app
@@ -68,7 +68,18 @@ echo "Step 3: Build the app"
 echo "----------------------"
 
 if prompt_user "Build the app?"; then
-  sudo -u $DEPLOY_USER -H bash -c "cd /home/$DEPLOY_USER/$REPO && npm install && npm run build"
+  sudo -u $DEPLOY_USER -H bash << EOF
+	# Load nvm script
+	export NVM_DIR="\$HOME/.nvm"
+	[ -s "\$NVM_DIR/nvm.sh" ] && \. "\$NVM_DIR/nvm.sh"  # This loads nvm
+
+	export NPM_DIR="\$NVM_DIR/versions/node/\$(nvm current)/bin"
+	export PATH="\$NPM_DIR:\$PATH"
+
+	cd /home/$DEPLOY_USER/$REPO
+	npm install
+	npm run build
+EOF
 fi
 
 # Step 4: Add the app to PM2
@@ -79,7 +90,17 @@ echo "---------------------------"
 if prompt_user "Add the app to PM2?"; then
   # Read the relative path of the Node.js script to run
   read -rp "Enter the relative path of the Node.js script to run (e.g., app.js): " SCRIPT_PATH
-  sudo -u $DEPLOY_USER -H pm2 start /home/$DEPLOY_USER/$REPO/$SCRIPT_PATH --name $REPO --env PORT=$PORT
+  sudo -u $DEPLOY_USER -H bash << EOF
+	# Load nvm script
+	export NVM_DIR="\$HOME/.nvm"
+	[ -s "\$NVM_DIR/nvm.sh" ] && \. "\$NVM_DIR/nvm.sh"  # This loads nvm
+
+	export NPM_DIR="\$NVM_DIR/versions/node/\$(nvm current)/bin"
+	export PATH="\$NPM_DIR:\$PATH"
+
+	cd /home/$DEPLOY_USER/$REPO
+	pm2 start /home/$DEPLOY_USER/$REPO/$SCRIPT_PATH --name $REPO --env PORT=$PORT
+EOF
 fi
 
 # Step 5: Configure Nginx

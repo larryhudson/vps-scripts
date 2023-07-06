@@ -27,6 +27,9 @@ echo "Step 2: Install System Dependencies"
 echo "------------------------------------"
 
 
+	# Load nvm script
+	export NVM_DIR="\$HOME/.nvm"
+	[ -s "\$NVM_DIR/nvm.sh" ] && \. "\$NVM_DIR/nvm.sh"  # This loads nvm
 read -rp "Install Redis? (Y/n) " install_redis
 install_redis=${install_redis:-Y}
 
@@ -79,9 +82,14 @@ if [[ $install_node_lts =~ ^[Yy]$ ]]; then
 EOF
 
 # Install the latest LTS version of Node.js as 'deploy'
-    sudo -u $DEPLOY_USERNAME bash << EOF
-        nvm install --lts
-        nvm use --lts
+sudo -u $DEPLOY_USERNAME bash << EOF
+	# Load nvm script
+	export NVM_DIR="\$HOME/.nvm"
+	[ -s "\$NVM_DIR/nvm.sh" ] && \. "\$NVM_DIR/nvm.sh"  # This loads nvm
+	nvm install --lts
+	nvm use --lts
+
+	# Set the PATH for npm
 EOF
 fi
 
@@ -92,6 +100,13 @@ if [[ $install_pm2 =~ ^[Yy]$ ]]; then
 
 # Install PM2 as 'deploy'
     sudo -u deploy bash << EOF
+	# Load nvm script
+	export NVM_DIR="\$HOME/.nvm"
+	[ -s "\$NVM_DIR/nvm.sh" ] && \. "\$NVM_DIR/nvm.sh"  # This loads nvm
+
+	export NPM_DIR="\$NVM_DIR/versions/node/\$(nvm current)/bin"
+	export PATH="\$NPM_DIR:\$PATH"
+
         npm install -g pm2
 EOF
     
@@ -128,16 +143,16 @@ if [[ $configure_git =~ ^[Yy]$ ]]; then
 	read -rp "Enter your name for Git user config: " git_username
 	read -rp "Enter your email address for Git user config: " git_email
 
-	sudo -u $DEPLOY_USER git config --global user.name "$git_username"
-	sudo -u $DEPLOY_USER git config --global user.email "$git_email"
+	sudo -u $DEPLOY_USERNAME git config --global user.name "$git_username"
+	sudo -u $DEPLOY_USERNAME git config --global user.email "$git_email"
 
 	echo "Generating SSH key..."
-	sudo -u $DEPLOY_USER ssh-keygen -t rsa -b 4096 -C "$git_email"
+	sudo -u $DEPLOY_USERNAME ssh-keygen -t rsa -b 4096 -C "$git_email"
 
 	echo ""
 	echo "Copy and paste the following public key into your Git platform:"
 	echo "-----------------------------"
-	cat /home/$DEPLOY_USER/.ssh/id_rsa.pub
+	cat /home/$DEPLOY_USERNAME/.ssh/id_rsa.pub
 	echo "-----------------------------"
 fi
 
