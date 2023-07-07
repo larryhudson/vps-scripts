@@ -37,21 +37,6 @@ while ! is_port_available "$PORT"; do
   PORT=$((PORT + 1))
 done
 
-# Step 1: Set up the deploy user
-echo ""
-echo "Step 1: Set up the deploy user"
-echo "-------------------------------"
-
-DEPLOY_USER="deploy"
-
-# Skip if the deploy user already exists
-if id "$DEPLOY_USER" >/dev/null 2>&1; then
-  echo "Deploy user '$DEPLOY_USER' already exists. Skipping user creation..."
-else
-  echo "Creating deploy user..."
-  sudo adduser --disabled-password --gecos "" "$DEPLOY_USER"
-fi
-
 
 # Step 2: Clone the Git repo as the deploy user
 echo ""
@@ -59,7 +44,7 @@ echo "Step 2: Clone the Git repo"
 echo "--------------------------"
 
 if prompt_user "Clone the Git repo '$REPO_NAME' as the deploy user?"; then
-  sudo -u $DEPLOY_USER -H git clone https://github.com/$REPO_NAME /home/$DEPLOY_USER/$REPO
+  git clone https://github.com/$REPO_NAME /home/$DEPLOY_USER/$REPO
 fi
 
 # Step 3: Build the app
@@ -68,18 +53,9 @@ echo "Step 3: Build the app"
 echo "----------------------"
 
 if prompt_user "Build the app?"; then
-  sudo -u $DEPLOY_USER -H bash << EOF
-	# Load nvm script
-	export NVM_DIR="\$HOME/.nvm"
-	[ -s "\$NVM_DIR/nvm.sh" ] && \. "\$NVM_DIR/nvm.sh"  # This loads nvm
-
-	export NPM_DIR="\$NVM_DIR/versions/node/\$(nvm current)/bin"
-	export PATH="\$NPM_DIR:\$PATH"
-
-	cd /home/$DEPLOY_USER/$REPO
-	npm install
-	npm run build
-EOF
+  cd /home/$DEPLOY_USER/$REPO
+  npm install
+  npm run build
 fi
 
 # Step 4: Add the app to PM2
@@ -90,17 +66,8 @@ echo "---------------------------"
 if prompt_user "Add the app to PM2?"; then
   # Read the relative path of the Node.js script to run
   read -rp "Enter the relative path of the Node.js script to run (e.g., app.js): " SCRIPT_PATH
-  sudo -u $DEPLOY_USER -H bash << EOF
-	# Load nvm script
-	export NVM_DIR="\$HOME/.nvm"
-	[ -s "\$NVM_DIR/nvm.sh" ] && \. "\$NVM_DIR/nvm.sh"  # This loads nvm
-
-	export NPM_DIR="\$NVM_DIR/versions/node/\$(nvm current)/bin"
-	export PATH="\$NPM_DIR:\$PATH"
-
-	cd /home/$DEPLOY_USER/$REPO
-	pm2 start /home/$DEPLOY_USER/$REPO/$SCRIPT_PATH --name $REPO --env PORT=$PORT
-EOF
+  cd /home/$DEPLOY_USER/$REPO
+  pm2 start /home/$DEPLOY_USER/$REPO/$SCRIPT_PATH --name $REPO --env PORT=$PORT
 fi
 
 # Step 5: Configure Nginx
@@ -108,21 +75,23 @@ echo ""
 echo "Step 5: Configure Nginx"
 echo "------------------------"
 
+read -rp "Enter the subdomain for your app: " SUBDOMAIN
+
 if prompt_user "Configure Nginx for the app?"; then
   sudo tee "/etc/nginx/sites-available/$REPO" > /dev/null << EOF
 server {
     listen 80;
-    server_name $REPO;
+    server_name $SUBDOMAIN;
 
     location / {
-        proxy_pass http://localhost:$PORT;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade \$http_upgrade;
-        proxy_set_header Connection 'upgrade';
-        proxy_set_header Host \$host;
+	proxy_pass http://localhost:$PORT;
+	proxy_http_version 1.1;
+	proxy_set_header Upgrade \$http_upgrade;
+	proxy_set_header Connection 'upgrade';
+	proxy_set_header Host \$host;
 	proxy_cache_bypass \$http_upgrade;
-}
-}
+      }
+    }
 EOF
 
   # Enable the Nginx site
@@ -143,7 +112,6 @@ echo "Step 7: Create a new A record in DNS"
 echo "-----------------------------------"
 
 if prompt_user "Create a new A record in your DNS for the domain?"; then
-  read -rp "Enter the subdomain for your app: " SUBDOMAIN
   SERVER_IP=$(curl -s http://checkip.amazonaws.com)
   echo "Please create an A record in your DNS configuration with the following details:"
   echo "Type: A"
