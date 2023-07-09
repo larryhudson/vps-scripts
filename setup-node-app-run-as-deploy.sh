@@ -23,6 +23,7 @@ read -rp "Enter the repository name in the format 'owner/repo': " REPO_NAME
 # Extract owner and repo from repository name
 OWNER=$(echo $REPO_NAME | cut -d'/' -f1)
 REPO=$(echo $REPO_NAME | cut -d'/' -f2)
+APP_DIR=/var/www/$REPO
 
 # Function to check if a port is available
 function is_port_available() {
@@ -44,8 +45,13 @@ echo "Step 2: Clone the Git repo"
 echo "--------------------------"
 
 if prompt_user "Clone the Git repo '$REPO_NAME' as the deploy user?"; then
-  git clone https://github.com/$REPO_NAME /home/$DEPLOY_USER/$REPO
+  git clone https://github.com/$REPO_NAME $APP_DIR
+
+  echo "Changing ownership to www-data group"
+  chown -R deploy:www-data $APP_DIR
+  chmod -R g+rx $APP_DIR
 fi
+
 
 # Step 3: Build the app
 echo ""
@@ -53,7 +59,7 @@ echo "Step 3: Build the app"
 echo "----------------------"
 
 if prompt_user "Build the app?"; then
-  cd /home/$DEPLOY_USER/$REPO
+  cd $APP_DIR
   npm install
   npm run build
 fi
@@ -66,8 +72,8 @@ echo "---------------------------"
 if prompt_user "Add the app to PM2?"; then
   # Read the relative path of the Node.js script to run
   read -rp "Enter the relative path of the Node.js script to run (e.g., app.js): " SCRIPT_PATH
-  cd /home/$DEPLOY_USER/$REPO
-  pm2 start /home/$DEPLOY_USER/$REPO/$SCRIPT_PATH --name $REPO --env PORT=$PORT
+  cd $APP_DIR
+  pm2 start $APP_DIR/$SCRIPT_PATH --name $REPO --env PORT=$PORT
 fi
 
 # Step 5: Configure Nginx
@@ -78,24 +84,12 @@ echo "------------------------"
 read -rp "Enter the subdomain for your app: " SUBDOMAIN
 
 if prompt_user "Configure Nginx for the app?"; then
-  sudo tee "/etc/nginx/sites-available/$REPO" > /dev/null << EOF
-server {
-    listen 80;
-    server_name $SUBDOMAIN;
-
-    location / {
-	proxy_pass http://localhost:$PORT;
-	proxy_http_version 1.1;
-	proxy_set_header Upgrade \$http_upgrade;
-	proxy_set_header Connection 'upgrade';
-	proxy_set_header Host \$host;
-	proxy_cache_bypass \$http_upgrade;
-      }
-    }
-EOF
-
-  # Enable the Nginx site
-  sudo ln -s /etc/nginx/sites-available/$REPO /etc/nginx/sites-enabled/
+  # TODO: instead of writing it like this, copy the template file and then replace instances of example.com
+  cd $APP_DIR
+  cp nginx.conf.sample nginx.conf
+  sed -i "s/example.com/$DOMAIN/g" "$NGINX_CONF"
+  sudo cp nginx.conf /etc/nginx/sites-available/$DOMAIN.conf
+  sudo ln -s /etc/nginx/sites-available/$DOMAIN.conf /etc/nginx/sites-enabled/
 
   # Test Nginx configuration and restart Nginx
   if sudo nginx -t; then
